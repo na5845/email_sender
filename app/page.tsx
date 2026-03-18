@@ -388,44 +388,55 @@ export default function EmailSenderPro() {
         <Card>
           <SectionTitle icon={<Lock className="w-4 h-4" />} title="פרטי שליחה" />
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <Input
-              label="כתובת מייל שולח"
-              value={creds.email}
-              onChange={v => setCreds(p => ({ ...p, email: v }))}
-              placeholder="you@gmail.com"
-              type="email"
-            />
-            <Input
-              label="סיסמת אפליקציה (App Password)"
-              value={creds.password}
-              onChange={v => setCreds(p => ({ ...p, password: v }))}
-              placeholder="xxxx xxxx xxxx xxxx"
-              type="password"
-            />
-          </div>
-
+          {/* Provider selector */}
           <div className="mb-4">
             <label className="block text-sm text-gray-400 mb-1.5">ספק מייל</label>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-              {(['gmail', 'outlook', 'yahoo', 'custom'] as const).map(p => (
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+              {([
+                { id: 'gmail',   label: 'Gmail' },
+                { id: 'outlook', label: 'Outlook' },
+                { id: 'yahoo',   label: 'Yahoo' },
+                { id: 'resend',  label: 'Resend' },
+                { id: 'custom',  label: 'SMTP מותאם' },
+              ] as const).map(p => (
                 <button
-                  key={p}
-                  onClick={() => setCreds(prev => ({ ...prev, provider: p }))}
+                  key={p.id}
+                  onClick={() => setCreds(prev => ({ ...prev, provider: p.id }))}
                   className={`py-2 px-3 rounded-xl text-sm border transition-all ${
-                    creds.provider === p
+                    creds.provider === p.id
                       ? 'bg-purple-600/40 border-purple-500 text-purple-200'
                       : 'bg-white/5 border-white/10 text-gray-400 hover:border-white/20'
                   }`}
                 >
-                  {p === 'gmail' ? 'Gmail' : p === 'outlook' ? 'Outlook' : p === 'yahoo' ? 'Yahoo' : 'SMTP מותאם'}
+                  {p.label}
                 </button>
               ))}
             </div>
           </div>
 
+          {/* SMTP credentials (all except Resend) */}
+          {creds.provider !== 'resend' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 animate-fade-in">
+              <Input
+                label="כתובת מייל שולח"
+                value={creds.email}
+                onChange={v => setCreds(p => ({ ...p, email: v }))}
+                placeholder="you@gmail.com"
+                type="email"
+              />
+              <Input
+                label="סיסמת אפליקציה (App Password)"
+                value={creds.password}
+                onChange={v => setCreds(p => ({ ...p, password: v }))}
+                placeholder="xxxx xxxx xxxx xxxx"
+                type="password"
+              />
+            </div>
+          )}
+
+          {/* Custom SMTP fields */}
           {creds.provider === 'custom' && (
-            <div className="grid grid-cols-3 gap-3 mt-3 animate-fade-in">
+            <div className="grid grid-cols-3 gap-3 mb-4 animate-fade-in">
               <Input
                 label="שרת SMTP"
                 value={creds.smtpHost}
@@ -442,11 +453,39 @@ export default function EmailSenderPro() {
             </div>
           )}
 
-          <div className="mt-3 flex items-start gap-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl">
+          {/* Resend fields */}
+          {creds.provider === 'resend' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 animate-fade-in">
+              <Input
+                label="Resend API Key"
+                value={creds.resendApiKey}
+                onChange={v => setCreds(p => ({ ...p, resendApiKey: v }))}
+                placeholder="re_xxxxxxxxxxxxxxxxxxxx"
+                type="password"
+              />
+              <Input
+                label='כתובת שולח (דומיין מאומת)'
+                value={creds.resendFrom}
+                onChange={v => setCreds(p => ({ ...p, resendFrom: v }))}
+                placeholder="name@yourdomain.com"
+                type="email"
+              />
+            </div>
+          )}
+
+          {/* Info bar */}
+          <div className="flex items-start gap-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl">
             <Info className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
-            <p className="text-xs text-amber-300/80">
-              Gmail: הפעל 2FA ← הגדרות חשבון ← אבטחה ← סיסמאות אפליקציה. מגבלת Gmail: 500/יום (Workspace: 2,000/יום)
-            </p>
+            {creds.provider === 'resend' ? (
+              <p className="text-xs text-amber-300/80">
+                Resend: 3,000 מיילים/חודש חינם • 100/יום חינם • ללא הגבלה בתשלום.
+                הדומיין חייב להיות מאומת ב-<span className="underline">resend.com/domains</span>. מפתח API: <span className="underline">resend.com/api-keys</span>
+              </p>
+            ) : (
+              <p className="text-xs text-amber-300/80">
+                Gmail: הפעל 2FA ← הגדרות חשבון ← אבטחה ← סיסמאות אפליקציה. מגבלה: 500/יום (Workspace: 2,000/יום)
+              </p>
+            )}
           </div>
         </Card>
 
