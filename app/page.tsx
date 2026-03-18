@@ -17,9 +17,11 @@ interface Contact {
 interface Credentials {
   email: string
   password: string
-  provider: 'gmail' | 'outlook' | 'yahoo' | 'custom'
+  provider: 'gmail' | 'outlook' | 'yahoo' | 'custom' | 'resend'
   smtpHost: string
   smtpPort: string
+  resendApiKey: string
+  resendFrom: string
 }
 
 interface Attachment {
@@ -165,7 +167,8 @@ function personalize(template: string, contact: Contact): string {
 export default function EmailSenderPro() {
   // Credentials
   const [creds, setCreds] = useState<Credentials>({
-    email: '', password: '', provider: 'gmail', smtpHost: '', smtpPort: '587'
+    email: '', password: '', provider: 'gmail', smtpHost: '', smtpPort: '587',
+    resendApiKey: '', resendFrom: ''
   })
 
   // Contacts
@@ -182,6 +185,9 @@ export default function EmailSenderPro() {
   // Attachment
   const [attachment, setAttachment] = useState<Attachment | null>(null)
 
+  // Sending settings
+  const [delaySec, setDelaySec] = useState(3)
+
   // Progress
   const [sending, setSending] = useState(false)
   const [totalSent, setTotalSent] = useState(0)
@@ -189,6 +195,7 @@ export default function EmailSenderPro() {
   const [totalProcessed, setTotalProcessed] = useState(0)
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [done, setDone] = useState(false)
+  const stopRef = useRef(false)
 
   // Preview modal
   const [showPreview, setShowPreview] = useState(false)
@@ -287,15 +294,19 @@ export default function EmailSenderPro() {
     setTotalFailed(0)
     setTotalProcessed(0)
     setLogs([])
+    stopRef.current = false
 
-    const BATCH = 50
     let sent = 0, failed = 0
 
-    addLog('info', `מתחיל שליחה ל-${contacts.length.toLocaleString()} נמענים...`)
+    addLog('info', `מתחיל שליחה ל-${contacts.length.toLocaleString()} נמענים (${delaySec}ש׳ בין כל מייל)...`)
 
-    for (let i = 0; i < contacts.length; i += BATCH) {
-      const batch = contacts.slice(i, i + BATCH)
-      const batchNum = Math.floor(i / BATCH) + 1
+    for (let i = 0; i < contacts.length; i++) {
+      if (stopRef.current) {
+        addLog('info', `⛔ עצר ידני לאחר ${i} מיילים`)
+        break
+      }
+
+      const contact = contacts[i]
 
       try {
         const res = await fetch('/api/send', {
@@ -303,7 +314,7 @@ export default function EmailSenderPro() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             credentials: creds,
-            contacts: batch,
+            contacts: [contact],
             emailColumn: emailCol,
             subject,
             body,
@@ -314,29 +325,32 @@ export default function EmailSenderPro() {
 
         if (!res.ok) {
           const err = await res.json().catch(() => ({ error: 'שגיאת שרת' }))
-          addLog('error', `אצווה ${batchNum}: ${err.error}`)
-          failed += batch.length
+          failed++
+          addLog('error', `✗ [${i + 1}] ${contact[emailCol]}: ${err.error}`)
         } else {
           const result: BatchResult = await res.json()
           sent += result.sent
           failed += result.failed
-          addLog(
-            result.failed > 0 ? 'error' : 'success',
-            `אצווה ${batchNum} (${i + 1}–${Math.min(i + BATCH, contacts.length)}): ✓ ${result.sent}  ✗ ${result.failed}`
-          )
-          result.errors.slice(0, 5).forEach(e =>
-            addLog('error', `  ↳ ${e.email}: ${e.error}`)
-          )
+          if (result.failed > 0 && result.errors[0]) {
+            addLog('error', `✗ [${i + 1}] ${result.errors[0].email}: ${result.errors[0].error}`)
+          } else {
+            addLog('success', `✓ [${i + 1}] ${contact[emailCol]}`)
+          }
         }
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : 'שגיאת רשת'
-        addLog('error', `אצווה ${batchNum}: ${msg}`)
-        failed += batch.length
+        failed++
+        addLog('error', `✗ [${i + 1}] ${contact[emailCol]}: ${msg}`)
       }
 
       setTotalSent(sent)
       setTotalFailed(failed)
-      setTotalProcessed(Math.min(i + BATCH, contacts.length))
+      setTotalProcessed(i + 1)
+
+      // Delay between emails (skip after last one)
+      if (i < contacts.length - 1 && !stopRef.current) {
+        await new Promise(r => setTimeout(r, delaySec * 1000))
+      }
     }
 
     addLog('info', `✅ סיום! נשלחו ${sent.toLocaleString()} • נכשלו ${failed.toLocaleString()}`)
@@ -592,6 +606,30 @@ export default function EmailSenderPro() {
           />
         </Card>
 
+        {/* ── Delay Selector ── */}
+        <div className="glass rounded-2xl px-6 py-4 mb-6 flex items-center gap-4 flex-wrap">
+          <span className="text-sm text-gray-400 shrink-0">השהייה בין מיילים:</span>
+          <div className="flex gap-2">
+            {[1, 2, 3, 5, 10].map(s => (
+              <button
+                key={s}
+                onClick={() => setDelaySec(s)}
+                disabled={sending}
+                className={`px-3 py-1.5 rounded-lg text-sm border transition-all ${
+                  delaySec === s
+                    ? 'bg-purple-600/40 border-purple-500 text-purple-200 font-medium'
+                    : 'bg-white/5 border-white/10 text-gray-400 hover:border-white/20'
+                } disabled:opacity-40`}
+              >
+                {s}ש׳
+              </button>
+            ))}
+          </div>
+          <span className="text-xs text-gray-600 mr-auto">
+            {contacts.length > 0 && `זמן משוער: ~${Math.ceil(contacts.length * delaySec / 60)} דקות`}
+          </span>
+        </div>
+
         {/* ── Actions ── */}
         <div className="flex flex-wrap gap-3 mb-6">
           <button
@@ -619,6 +657,15 @@ export default function EmailSenderPro() {
               </>
             )}
           </button>
+
+          {sending && (
+            <button
+              onClick={() => { stopRef.current = true }}
+              className="flex items-center gap-2 px-5 py-3 bg-red-600/20 hover:bg-red-600/40 border border-red-500/40 text-red-300 rounded-xl transition-all text-sm"
+            >
+              <X className="w-4 h-4" /> עצור
+            </button>
+          )}
 
           {done && (
             <button

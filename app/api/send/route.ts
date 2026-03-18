@@ -115,7 +115,24 @@ export async function POST(request: NextRequest) {
     const personalSubject = personalize(subject, contact)
     const personalBody = personalize(body, contact)
 
-    const html = isHtml ? personalBody : personalBody.replace(/\n/g, '<br/>')
+    // Build proper Hebrew-compatible HTML
+    const innerHtml = isHtml
+      ? personalBody
+      : personalBody.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br/>')
+
+    const html = `<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+</head>
+<body style="direction:rtl;text-align:right;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.7;color:#1a1a1a;background:#ffffff;margin:0;padding:20px;">
+  <div style="max-width:600px;margin:0 auto;">
+    ${innerHtml}
+  </div>
+</body>
+</html>`
+
     const text = isHtml ? personalBody.replace(/<[^>]*>/g, '') : personalBody
 
     try {
@@ -133,9 +150,6 @@ export async function POST(request: NextRequest) {
       const msg = err instanceof Error ? err.message : 'שגיאה לא ידועה'
       errors.push({ email: to, error: msg })
     }
-
-    // Tiny delay to avoid SMTP rate limiting
-    await new Promise(r => setTimeout(r, 150))
   }
 
   return NextResponse.json({ sent, failed, errors })
