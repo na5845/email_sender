@@ -18,9 +18,7 @@ interface SendRequest {
   credentials: {
     email: string
     password: string
-    provider: 'gmail' | 'outlook' | 'yahoo' | 'custom' | 'resend'
-    smtpHost?: string
-    smtpPort?: string
+    provider: 'gmail' | 'resend'
     resendApiKey?: string
     resendFrom?: string
   }
@@ -51,22 +49,8 @@ function buildHtml(innerHtml: string): string {
 </html>`
 }
 
-function buildTransportConfig(creds: SendRequest['credentials']) {
-  switch (creds.provider) {
-    case 'gmail':
-      return { service: 'gmail', auth: { user: creds.email, pass: creds.password } }
-    case 'outlook':
-      return { service: 'hotmail', auth: { user: creds.email, pass: creds.password } }
-    case 'yahoo':
-      return { service: 'yahoo', auth: { user: creds.email, pass: creds.password } }
-    case 'custom':
-      return {
-        host: creds.smtpHost,
-        port: parseInt(creds.smtpPort ?? '587', 10),
-        secure: creds.smtpPort === '465',
-        auth: { user: creds.email, pass: creds.password },
-      }
-  }
+function buildGmailTransport(creds: SendRequest['credentials']) {
+  return { service: 'gmail', auth: { user: creds.email, pass: creds.password } }
 }
 
 export async function POST(request: NextRequest) {
@@ -142,7 +126,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'פרטי אימות חסרים' }, { status: 400 })
   }
 
-  const config = buildTransportConfig(credentials)
+  const config = buildGmailTransport(credentials)
   const transporter = nodemailer.createTransport(config as nodemailer.TransportOptions)
 
   try {

@@ -17,9 +17,7 @@ interface Contact {
 interface Credentials {
   email: string
   password: string
-  provider: 'gmail' | 'outlook' | 'yahoo' | 'custom' | 'resend'
-  smtpHost: string
-  smtpPort: string
+  provider: 'gmail' | 'resend'
   resendApiKey: string
   resendFrom: string
 }
@@ -167,7 +165,7 @@ function personalize(template: string, contact: Contact): string {
 export default function EmailSenderPro() {
   // Credentials
   const [creds, setCreds] = useState<Credentials>({
-    email: '', password: '', provider: 'gmail', smtpHost: '', smtpPort: '587',
+    email: '', password: '', provider: 'gmail',
     resendApiKey: '', resendFrom: ''
   })
 
@@ -195,7 +193,16 @@ export default function EmailSenderPro() {
   const [totalProcessed, setTotalProcessed] = useState(0)
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [done, setDone] = useState(false)
+  const [pauseUntil, setPauseUntil] = useState<number | null>(null)
+  const [nowTick, setNowTick] = useState(0)
   const stopRef = useRef(false)
+
+  // Countdown ticker – updates every second while paused
+  useEffect(() => {
+    if (!pauseUntil) return
+    const id = setInterval(() => setNowTick(t => t + 1), 1000)
+    return () => clearInterval(id)
+  }, [pauseUntil])
 
   // Preview modal
   const [showPreview, setShowPreview] = useState(false)
@@ -294,15 +301,40 @@ export default function EmailSenderPro() {
     setTotalFailed(0)
     setTotalProcessed(0)
     setLogs([])
+    setPauseUntil(null)
     stopRef.current = false
 
-    let sent = 0, failed = 0
+    const isResend = creds.provider === 'resend'
+    const DAILY_LIMIT = 500
+    const PAUSE_MS = 24 * 60 * 60 * 1000
 
-    addLog('info', `מתחיל שליחה ל-${contacts.length.toLocaleString()} נמענים (${delaySec}ש׳ בין כל מייל)...`)
+    let sent = 0, failed = 0, dailySent = 0
+
+    addLog('info', isResend
+      ? `מתחיל שליחה ל-${contacts.length.toLocaleString()} נמענים דרך Resend...`
+      : `מתחיל שליחה ל-${contacts.length.toLocaleString()} נמענים (${delaySec}ש׳ בין כל מייל)...`
+    )
 
     for (let i = 0; i < contacts.length; i++) {
       if (stopRef.current) {
         addLog('info', `⛔ עצר ידני לאחר ${i} מיילים`)
+        break
+      }
+
+      // Gmail: pause 24h after every 500 sent
+      if (!isResend && dailySent > 0 && dailySent % DAILY_LIMIT === 0) {
+        const resumeAt = Date.now() + PAUSE_MS
+        setPauseUntil(resumeAt)
+        addLog('info', `⏸ הגעת ל-${dailySent} מיילים – ממתין 24 שעות לפני המשך...`)
+        while (Date.now() < resumeAt && !stopRef.current) {
+          await new Promise(r => setTimeout(r, 1000))
+        }
+        setPauseUntil(null)
+        if (!stopRef.current) addLog('info', `▶ ממשיך שליחה (מייל ${i + 1})...`)
+      }
+
+      if (stopRef.current) {
+        addLog('info', `⛔ עצר ידני`)
         break
       }
 
@@ -331,6 +363,7 @@ export default function EmailSenderPro() {
           const result: BatchResult = await res.json()
           sent += result.sent
           failed += result.failed
+          dailySent += result.sent
           if (result.failed > 0 && result.errors[0]) {
             addLog('error', `✗ [${i + 1}] ${result.errors[0].email}: ${result.errors[0].error}`)
           } else {
@@ -347,8 +380,8 @@ export default function EmailSenderPro() {
       setTotalFailed(failed)
       setTotalProcessed(i + 1)
 
-      // Delay between emails (skip after last one)
-      if (i < contacts.length - 1 && !stopRef.current) {
+      // Gmail: delay between emails. Resend: no delay.
+      if (!isResend && i < contacts.length - 1 && !stopRef.current) {
         await new Promise(r => setTimeout(r, delaySec * 1000))
       }
     }
@@ -391,13 +424,10 @@ export default function EmailSenderPro() {
           {/* Provider selector */}
           <div className="mb-4">
             <label className="block text-sm text-gray-400 mb-1.5">ספק מייל</label>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               {([
-                { id: 'gmail',   label: 'Gmail' },
-                { id: 'outlook', label: 'Outlook' },
-                { id: 'yahoo',   label: 'Yahoo' },
-                { id: 'resend',  label: 'Resend' },
-                { id: 'custom',  label: 'SMTP מותאם' },
+                { id: 'gmail',  label: 'Gmail' },
+                { id: 'resend', label: 'Resend' },
               ] as const).map(p => (
                 <button
                   key={p.id}
@@ -414,11 +444,11 @@ export default function EmailSenderPro() {
             </div>
           </div>
 
-          {/* SMTP credentials (all except Resend) */}
-          {creds.provider !== 'resend' && (
+          {/* Gmail fields */}
+          {creds.provider === 'gmail' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 animate-fade-in">
               <Input
-                label="כתובת מייל שולח"
+                label="כתובת Gmail"
                 value={creds.email}
                 onChange={v => setCreds(p => ({ ...p, email: v }))}
                 placeholder="you@gmail.com"
@@ -434,25 +464,6 @@ export default function EmailSenderPro() {
             </div>
           )}
 
-          {/* Custom SMTP fields */}
-          {creds.provider === 'custom' && (
-            <div className="grid grid-cols-3 gap-3 mb-4 animate-fade-in">
-              <Input
-                label="שרת SMTP"
-                value={creds.smtpHost}
-                onChange={v => setCreds(p => ({ ...p, smtpHost: v }))}
-                placeholder="smtp.example.com"
-                className="col-span-2"
-              />
-              <Input
-                label="פורט"
-                value={creds.smtpPort}
-                onChange={v => setCreds(p => ({ ...p, smtpPort: v }))}
-                placeholder="587"
-              />
-            </div>
-          )}
-
           {/* Resend fields */}
           {creds.provider === 'resend' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 animate-fade-in">
@@ -464,7 +475,7 @@ export default function EmailSenderPro() {
                 type="password"
               />
               <Input
-                label='כתובת שולח (דומיין מאומת)'
+                label="כתובת שולח (דומיין מאומת)"
                 value={creds.resendFrom}
                 onChange={v => setCreds(p => ({ ...p, resendFrom: v }))}
                 placeholder="name@yourdomain.com"
@@ -645,29 +656,31 @@ export default function EmailSenderPro() {
           />
         </Card>
 
-        {/* ── Delay Selector ── */}
-        <div className="glass rounded-2xl px-6 py-4 mb-6 flex items-center gap-4 flex-wrap">
-          <span className="text-sm text-gray-400 shrink-0">השהייה בין מיילים:</span>
-          <div className="flex gap-2">
-            {[1, 2, 3, 5, 10].map(s => (
-              <button
-                key={s}
-                onClick={() => setDelaySec(s)}
-                disabled={sending}
-                className={`px-3 py-1.5 rounded-lg text-sm border transition-all ${
-                  delaySec === s
-                    ? 'bg-purple-600/40 border-purple-500 text-purple-200 font-medium'
-                    : 'bg-white/5 border-white/10 text-gray-400 hover:border-white/20'
-                } disabled:opacity-40`}
-              >
-                {s}ש׳
-              </button>
-            ))}
+        {/* ── Delay Selector (Gmail only) ── */}
+        {creds.provider === 'gmail' && (
+          <div className="glass rounded-2xl px-6 py-4 mb-6 flex items-center gap-4 flex-wrap">
+            <span className="text-sm text-gray-400 shrink-0">השהייה בין מיילים:</span>
+            <div className="flex gap-2">
+              {[1, 2, 3, 5, 10].map(s => (
+                <button
+                  key={s}
+                  onClick={() => setDelaySec(s)}
+                  disabled={sending}
+                  className={`px-3 py-1.5 rounded-lg text-sm border transition-all ${
+                    delaySec === s
+                      ? 'bg-purple-600/40 border-purple-500 text-purple-200 font-medium'
+                      : 'bg-white/5 border-white/10 text-gray-400 hover:border-white/20'
+                  } disabled:opacity-40`}
+                >
+                  {s}ש׳
+                </button>
+              ))}
+            </div>
+            <span className="text-xs text-gray-600 mr-auto">
+              {contacts.length > 0 && `זמן משוער: ~${Math.ceil(contacts.length * delaySec / 60)} דקות`}
+            </span>
           </div>
-          <span className="text-xs text-gray-600 mr-auto">
-            {contacts.length > 0 && `זמן משוער: ~${Math.ceil(contacts.length * delaySec / 60)} דקות`}
-          </span>
-        </div>
+        )}
 
         {/* ── Actions ── */}
         <div className="flex flex-wrap gap-3 mb-6">
@@ -737,6 +750,26 @@ export default function EmailSenderPro() {
                 </span>
               )}
             </div>
+
+            {/* Pause countdown */}
+            {pauseUntil && (
+              <div className="mb-4 flex items-center gap-3 p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl animate-fade-in">
+                <div className="w-4 h-4 border-2 border-amber-400/50 border-t-amber-400 rounded-full animate-spin shrink-0" />
+                <div>
+                  <p className="text-amber-300 text-sm font-medium">⏸ הושג מגבלת 500/יום – ממתין 24 שעות</p>
+                  <p className="text-amber-400/70 text-xs mt-0.5">
+                    {(() => {
+                      void nowTick
+                      const rem = Math.max(0, pauseUntil - Date.now())
+                      const h = Math.floor(rem / 3600000)
+                      const m = Math.floor((rem % 3600000) / 60000)
+                      const s = Math.floor((rem % 60000) / 1000)
+                      return `נשאר: ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+                    })()}
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* Progress bar */}
             <div className="h-2 bg-white/10 rounded-full mb-4 overflow-hidden">
