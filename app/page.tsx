@@ -22,24 +22,24 @@ interface BatchResult { sent: number; failed: number; errors: { email: string; e
 // ── Theme ──────────────────────────────────────────────────────────────────
 
 const DARK = {
-  page: 'bg-gradient-to-br from-gray-950 via-purple-950 to-gray-950 text-white',
+  page: 'bg-gradient-to-br from-slate-950 via-blue-950 to-slate-950 text-white',
   card: 'glass rounded-2xl p-6 mb-6 animate-slide-up',
   heading: 'text-white',
   label: 'text-gray-400',
   muted: 'text-gray-500',
   faint: 'text-gray-600',
-  input: 'bg-white/5 border border-white/10 text-white placeholder-gray-600 hover:border-white/20 focus:border-purple-500',
-  select: 'bg-white/5 border border-white/10 text-white hover:border-white/20 focus:border-purple-500',
-  provActive: 'bg-purple-600/40 border-purple-500 text-purple-200',
+  input: 'bg-white/5 border border-white/10 text-white placeholder-gray-600 hover:border-white/20 focus:border-blue-500',
+  select: 'bg-white/5 border border-white/10 text-white hover:border-white/20 focus:border-blue-500',
+  provActive: 'bg-blue-600/40 border-blue-500 text-blue-200',
   provInactive: 'bg-white/5 border-white/10 text-gray-400 hover:border-white/20',
-  infoBar: 'bg-amber-500/10 border border-amber-500/20',
-  infoText: 'text-amber-300/80',
-  sectionIcon: 'bg-purple-600/30 text-purple-400',
-  dropzoneBorder: 'border-white/10 hover:border-purple-500/50',
+  infoBar: 'bg-blue-500/10 border border-blue-500/20',
+  infoText: 'text-blue-300/80',
+  sectionIcon: 'bg-blue-600/30 text-blue-400',
+  dropzoneBorder: 'border-white/10 hover:border-blue-500/50',
   varSection: 'bg-white/[0.03] border border-white/5',
   varSectionText: 'text-gray-500',
-  chipSubj: 'bg-blue-600/20 hover:bg-blue-600/40 border border-blue-500/30 text-blue-300',
-  chipBody: 'bg-purple-600/20 hover:bg-purple-600/40 border border-purple-500/30 text-purple-300',
+  chipSubj: 'bg-cyan-600/20 hover:bg-cyan-600/40 border border-cyan-500/30 text-cyan-300',
+  chipBody: 'bg-blue-600/20 hover:bg-blue-600/40 border border-blue-500/30 text-blue-300',
   tableBorder: 'border border-white/10',
   tableHead: 'bg-white/5',
   tableHeadText: 'text-gray-400',
@@ -47,7 +47,7 @@ const DARK = {
   tableCell: 'text-gray-300',
   tableMore: 'text-gray-600',
   delayPanel: 'glass rounded-2xl px-6 py-4 mb-6 flex items-center gap-4 flex-wrap',
-  delayActive: 'bg-purple-600/40 border-purple-500 text-purple-200 font-medium',
+  delayActive: 'bg-blue-600/40 border-blue-500 text-blue-200 font-medium',
   delayInactive: 'bg-white/5 border-white/10 text-gray-400 hover:border-white/20',
   logsBg: 'bg-black/30',
   logsSuccess: 'text-green-400',
@@ -71,24 +71,24 @@ const DARK = {
 }
 
 const LIGHT = {
-  page: 'bg-gradient-to-br from-slate-100 via-purple-50 to-blue-50 text-gray-900',
+  page: 'bg-gradient-to-br from-slate-100 via-blue-50 to-cyan-50 text-gray-900',
   card: 'bg-white rounded-2xl p-6 mb-6 animate-slide-up border border-gray-200 shadow-sm',
   heading: 'text-gray-900',
   label: 'text-gray-600',
   muted: 'text-gray-500',
   faint: 'text-gray-400',
-  input: 'bg-white border border-gray-300 text-gray-900 placeholder-gray-400 hover:border-gray-400 focus:border-purple-500 shadow-sm',
-  select: 'bg-white border border-gray-300 text-gray-900 hover:border-gray-400 focus:border-purple-500 shadow-sm',
-  provActive: 'bg-purple-100 border-purple-500 text-purple-700',
+  input: 'bg-white border border-gray-300 text-gray-900 placeholder-gray-400 hover:border-gray-400 focus:border-blue-500 shadow-sm',
+  select: 'bg-white border border-gray-300 text-gray-900 hover:border-gray-400 focus:border-blue-500 shadow-sm',
+  provActive: 'bg-blue-100 border-blue-500 text-blue-700',
   provInactive: 'bg-white border-gray-300 text-gray-600 hover:border-gray-400',
-  infoBar: 'bg-amber-50 border border-amber-200',
-  infoText: 'text-amber-700',
-  sectionIcon: 'bg-purple-100 text-purple-600',
+  infoBar: 'bg-blue-50 border border-blue-200',
+  infoText: 'text-blue-700',
+  sectionIcon: 'bg-blue-100 text-blue-600',
   dropzoneBorder: 'border-gray-300 hover:border-purple-400',
-  varSection: 'bg-purple-50 border border-purple-100',
+  varSection: 'bg-blue-50 border border-blue-100',
   varSectionText: 'text-gray-500',
-  chipSubj: 'bg-blue-100 hover:bg-blue-200 border border-blue-300 text-blue-700',
-  chipBody: 'bg-purple-100 hover:bg-purple-200 border border-purple-300 text-purple-700',
+  chipSubj: 'bg-cyan-100 hover:bg-cyan-200 border border-cyan-300 text-cyan-700',
+  chipBody: 'bg-blue-100 hover:bg-blue-200 border border-blue-300 text-blue-700',
   tableBorder: 'border border-gray-200',
   tableHead: 'bg-gray-50',
   tableHeadText: 'text-gray-600',
@@ -96,7 +96,7 @@ const LIGHT = {
   tableCell: 'text-gray-700',
   tableMore: 'text-gray-400',
   delayPanel: 'bg-white rounded-2xl px-6 py-4 mb-6 flex items-center gap-4 flex-wrap border border-gray-200 shadow-sm',
-  delayActive: 'bg-purple-100 border-purple-500 text-purple-700 font-medium',
+  delayActive: 'bg-blue-100 border-blue-500 text-blue-700 font-medium',
   delayInactive: 'bg-white border-gray-300 text-gray-600 hover:border-gray-400',
   logsBg: 'bg-gray-50 border border-gray-200',
   logsSuccess: 'text-green-600',
@@ -137,7 +137,7 @@ function SectionTitle({ icon, title, badge }: { icon: React.ReactNode; title: st
       <div className={`p-2 rounded-lg ${t.sectionIcon}`}>{icon}</div>
       <h2 className={`text-lg font-semibold ${t.heading}`}>{title}</h2>
       {badge && (
-        <span className="mr-auto text-xs bg-purple-600/40 text-purple-300 px-2 py-1 rounded-full">
+        <span className="mr-auto text-xs bg-blue-600/40 text-blue-200 px-2 py-1 rounded-full">
           {badge}
         </span>
       )}
@@ -464,10 +464,10 @@ export default function EmailSenderPro() {
               {dark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
             </button>
 
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-purple-600/20 rounded-2xl mb-4 border border-purple-500/20">
-              <Mail className="w-8 h-8 text-purple-500" />
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600/20 rounded-2xl mb-4 border border-blue-500/20">
+              <Mail className="w-8 h-8 text-blue-400" />
             </div>
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-purple-500 via-pink-400 to-blue-500 bg-clip-text text-transparent mb-2">
+            <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-400 via-cyan-300 to-blue-500 bg-clip-text text-transparent mb-2">
               Email Sender Pro
             </h1>
             <p className={`text-sm ${t.muted}`}>שלח מיילים מותאמים אישית לאלפי נמענים</p>
@@ -677,7 +677,7 @@ export default function EmailSenderPro() {
             </button>
 
             <button onClick={handleSend} disabled={sending}
-              className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white rounded-xl font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-purple-900/30 text-sm">
+              className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white rounded-xl font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-900/30 text-sm">
               {sending ? (
                 <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />שולח...</>
               ) : (
@@ -742,7 +742,7 @@ export default function EmailSenderPro() {
               )}
 
               <div className={`h-2 rounded-full mb-4 overflow-hidden ${t.progressBg}`}>
-                <div className="h-full bg-gradient-to-r from-purple-500 to-blue-500 rounded-full transition-all duration-300"
+                <div className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 rounded-full transition-all duration-300"
                   style={{ width: `${progress}%` }} />
               </div>
 
@@ -771,7 +771,7 @@ export default function EmailSenderPro() {
             <div className={`rounded-2xl w-full max-w-2xl max-h-[80vh] flex flex-col ${t.modal}`}>
               <div className={`flex items-center justify-between p-5 ${t.modalDivider}`}>
                 <h3 className={`font-semibold flex items-center gap-2 ${t.heading}`}>
-                  <Eye className="w-4 h-4 text-purple-500" />
+                  <Eye className="w-4 h-4 text-blue-400" />
                   תצוגה מקדימה
                   {contacts.length > 0 && <span className={`text-xs ${t.muted}`}>(נמען ראשון)</span>}
                 </h3>
