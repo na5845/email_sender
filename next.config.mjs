@@ -8,5 +8,10 @@ const nextConfig = {
   turbopack: {
     root: __dirname,
   },
+  api: {
+    bodyParser: {
+      sizeLimit: '50mb',
+    },
+  },
 }
 export default nextConfig
