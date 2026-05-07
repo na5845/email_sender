@@ -326,7 +326,7 @@ export default function EmailSenderPro() {
   // ── Manual Input Process ───────────────────────────────────────────────────
 
   const handleManualProcess = () => {
-    const lines = rawEmails.split(/[\n,;]/).map(e => e.trim()).filter(e => e.includes('@'));
+    const lines = rawEmails.split(/[\n,;\s]+/).map(e => e.trim()).filter(e => e.includes('@'));
     if (lines.length === 0) {
       alert('לא נמצאו כתובות אימייל תקינות בטקסט שהוזן');
       return;
@@ -385,7 +385,7 @@ export default function EmailSenderPro() {
     setLogs(prev => [...prev, { type, message, time: new Date().toLocaleTimeString('he-IL') }])
 
   const handleSend = async () => {
-    if (!creds.email && creds.provider === 'gmail') return alert('נא להזין כתובת מייל וסיסמה')
+    if ((!creds.email || !creds.password) && creds.provider === 'gmail') return alert('נא להזין כתובת מייל וסיסמה')
     if (creds.provider === 'resend' && !creds.resendApiKey) return alert('נא להזין API Key')
     if (!emailCol || !contacts.length) return alert('נא להעלות קובץ או להזין כתובות ידנית')
     if (!subject.trim()) return alert('נא להזין נושא למייל')
@@ -555,7 +555,12 @@ export default function EmailSenderPro() {
             {/* טאבים לבחירת שיטת הזנה */}
             <div className={`flex gap-1 p-1 rounded-xl mb-5 ${t.tableHead}`}>
               <button
-                onClick={() => setInputMethod('file')}
+                onClick={() => {
+                  setInputMethod('file')
+                  setContacts([])
+                  setColumns([])
+                  setEmailCol('')
+                }}
                 className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-medium transition-all ${
                   inputMethod === 'file' ? t.provActive : t.muted
                 }`}
@@ -563,7 +568,12 @@ export default function EmailSenderPro() {
                 <Upload className="w-3.5 h-3.5" /> העלאת קובץ
               </button>
               <button
-                onClick={() => setInputMethod('manual')}
+                onClick={() => {
+                  setInputMethod('manual')
+                  setContacts([])
+                  setColumns([])
+                  setEmailCol('')
+                }}
                 className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-medium transition-all ${
                   inputMethod === 'manual' ? t.provActive : t.muted
                 }`}
@@ -591,7 +601,7 @@ export default function EmailSenderPro() {
                   onClick={handleManualProcess}
                   className={`w-full py-2.5 rounded-xl text-sm font-semibold border transition-all ${t.chipBody} hover:opacity-80`}
                 >
-                  מעבד כתובות {rawEmails ? `(${rawEmails.split(/[\n,;]/).filter(x => x.includes('@')).length} זוהו)` : ''}
+                  מעבד כתובות {rawEmails ? `(${rawEmails.split(/[\n,;\s]+/).filter(x => x.includes('@')).length} זוהו)` : ''}
                 </button>
               </div>
             )}
@@ -779,6 +789,16 @@ export default function EmailSenderPro() {
                   <div className="w-4 h-4 border-2 border-amber-400/50 border-t-amber-400 rounded-full animate-spin shrink-0" />
                   <div>
                     <p className={`text-sm font-medium ${t.pauseText}`}>⏸ הושג מגבלת 500/יום – ממתין 24 שעות</p>
+                    <p className={`text-xs mt-0.5 ${t.pauseSub}`}>
+                      {(() => {
+                        void nowTick
+                        const rem = Math.max(0, pauseUntil - Date.now())
+                        const h = Math.floor(rem / 3600000)
+                        const m = Math.floor((rem % 3600000) / 60000)
+                        const s = Math.floor((rem % 60000) / 1000)
+                        return `נשאר: ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+                      })()}
+                    </p>
                   </div>
                 </div>
               )}
@@ -833,6 +853,16 @@ export default function EmailSenderPro() {
                     dir="rtl"
                     dangerouslySetInnerHTML={{ __html: previewBody || '(ריק)' }} />
                 </div>
+                {attachment && (
+                  <div className={`mt-3 pt-3 flex items-center gap-2 text-xs ${t.modalAttach}`}>
+                    <Paperclip className="w-3 h-3" /> {attachment.name}
+                  </div>
+                )}
+                {attachment && (
+                  <div className={`mt-3 pt-3 flex items-center gap-2 text-xs ${t.modalAttach}`}>
+                    <Paperclip className="w-3 h-3" /> {attachment.name}
+                  </div>
+                )}
               </div>
             </div>
           </div>
