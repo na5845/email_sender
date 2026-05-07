@@ -169,6 +169,7 @@ function VariableChip({ label, onClick }: { label: string; onClick: () => void }
   return (
     <button
       onClick={onClick}
+      type="button"
       className={`inline-flex items-center gap-1 px-3 py-1 text-xs rounded-full transition-all cursor-pointer ${t.chipBody}`}
     >
       <span>{'{{' + label + '}}'}</span>
@@ -255,7 +256,9 @@ export default function EmailSenderPro() {
     email: '', password: '', provider: 'gmail', resendApiKey: '', resendFrom: ''
   })
 
-  // Contacts
+  // Contacts & Input Method
+  const [inputMethod, setInputMethod] = useState<'file' | 'manual'>('file')
+  const [rawEmails, setRawEmails] = useState('')
   const [contacts, setContacts] = useState<Contact[]>([])
   const [columns, setColumns] = useState<string[]>([])
   const [emailCol, setEmailCol] = useState<string>('')
@@ -320,6 +323,22 @@ export default function EmailSenderPro() {
     reader.readAsArrayBuffer(file)
   }
 
+  // ── Manual Input Process ───────────────────────────────────────────────────
+
+  const handleManualProcess = () => {
+    const lines = rawEmails.split(/[\n,;]/).map(e => e.trim()).filter(e => e.includes('@'));
+    if (lines.length === 0) {
+      alert('לא נמצאו כתובות אימייל תקינות בטקסט שהוזן');
+      return;
+    }
+
+    const newContacts = lines.map(email => ({ 'אימייל': email }));
+    setContacts(newContacts);
+    setColumns(['אימייל']);
+    setEmailCol('אימייל');
+    setFileName(`הזנה ידנית (${lines.length} נמענים)`);
+  };
+
   // ── Attachment parse ───────────────────────────────────────────────────────
 
   const handleAttachment = (file: File) => {
@@ -366,8 +385,9 @@ export default function EmailSenderPro() {
     setLogs(prev => [...prev, { type, message, time: new Date().toLocaleTimeString('he-IL') }])
 
   const handleSend = async () => {
-    if (!creds.email || !creds.password) return alert('נא להזין כתובת מייל וסיסמה')
-    if (!emailCol || !contacts.length) return alert('נא להעלות קובץ אקסל ולבחור עמודת אימייל')
+    if (!creds.email && creds.provider === 'gmail') return alert('נא להזין כתובת מייל וסיסמה')
+    if (creds.provider === 'resend' && !creds.resendApiKey) return alert('נא להזין API Key')
+    if (!emailCol || !contacts.length) return alert('נא להעלות קובץ או להזין כתובות ידנית')
     if (!subject.trim()) return alert('נא להזין נושא למייל')
     if (!body.trim()) return alert('נא להזין גוף המייל')
 
@@ -438,7 +458,7 @@ export default function EmailSenderPro() {
   }
 
   const reset = () => {
-    setContacts([]); setColumns([]); setEmailCol(''); setFileName('')
+    setContacts([]); setColumns([]); setEmailCol(''); setFileName(''); setRawEmails(''); setInputMethod('file')
     setSubject(''); setBody(''); setAttachment(null)
     setTotalSent(0); setTotalFailed(0); setTotalProcessed(0)
     setLogs([]); setDone(false)
@@ -517,12 +537,11 @@ export default function EmailSenderPro() {
               <Info className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
               {creds.provider === 'resend' ? (
                 <p className={`text-xs ${t.infoText}`}>
-                  Resend: 3,000 מיילים/חודש חינם • 100/יום חינם • ללא הגבלה יומית בתשלום ($20/חודש).
-                  הדומיין חייב להיות מאומת ב-resend.com/domains. מפתח API: resend.com/api-keys
+                  Resend: 3,000 מיילים/חודש חינם • 100/יום חינם. הדומיין חייב להיות מאומת ב-resend.com/domains.
                 </p>
               ) : (
                 <p className={`text-xs ${t.infoText}`}>
-                  Gmail: הפעל 2FA ← הגדרות חשבון ← אבטחה ← סיסמאות אפליקציה. מגבלה: 500/יום (הכלי יעצור אוטומטית ויחכה 24 שעות)
+                  Gmail: הפעל 2FA ← סיסמאות אפליקציה. מגבלה: 500/יום (הכלי יעצור אוטומטית ויחכה 24 שעות).
                 </p>
               )}
             </div>
@@ -533,14 +552,52 @@ export default function EmailSenderPro() {
             <SectionTitle icon={<Users className="w-4 h-4" />} title="רשימת נמענים"
               badge={contacts.length ? `${contacts.length.toLocaleString()} אנשי קשר` : undefined} />
 
-            <DropZone onFile={handleExcel} accept=".xlsx,.xls,.csv"
-              label="גרור קובץ Excel / CSV לכאן או לחץ לבחירה"
-              sublabel=".xlsx, .xls, .csv – ללא הגבלת שורות"
-              file={fileName}
-              onClear={() => { setFileName(''); setContacts([]); setColumns([]); setEmailCol('') }} />
+            {/* טאבים לבחירת שיטת הזנה */}
+            <div className={`flex gap-1 p-1 rounded-xl mb-5 ${t.tableHead}`}>
+              <button
+                onClick={() => setInputMethod('file')}
+                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-medium transition-all ${
+                  inputMethod === 'file' ? t.provActive : t.muted
+                }`}
+              >
+                <Upload className="w-3.5 h-3.5" /> העלאת קובץ
+              </button>
+              <button
+                onClick={() => setInputMethod('manual')}
+                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-medium transition-all ${
+                  inputMethod === 'manual' ? t.provActive : t.muted
+                }`}
+              >
+                <Copy className="w-3.5 h-3.5" /> הזנה ידנית
+              </button>
+            </div>
+
+            {inputMethod === 'file' ? (
+              <DropZone onFile={handleExcel} accept=".xlsx,.xls,.csv"
+                label="גרור קובץ Excel / CSV לכאן או לחץ לבחירה"
+                sublabel=".xlsx, .xls, .csv – ללא הגבלת שורות"
+                file={fileName}
+                onClear={() => { setFileName(''); setContacts([]); setColumns([]); setEmailCol('') }} />
+            ) : (
+              <div className="space-y-3 animate-fade-in">
+                <textarea
+                  value={rawEmails}
+                  onChange={(e) => setRawEmails(e.target.value)}
+                  placeholder="הדבק כאן רשימת אימיילים (אחד בכל שורה, או מופרדים בפסיקים)..."
+                  className={`w-full h-32 rounded-xl px-4 py-3 text-sm font-mono focus:ring-2 focus:ring-blue-500/50 transition-all ${t.input}`}
+                  dir="ltr"
+                />
+                <button
+                  onClick={handleManualProcess}
+                  className={`w-full py-2.5 rounded-xl text-sm font-semibold border transition-all ${t.chipBody} hover:opacity-80`}
+                >
+                  מעבד כתובות {rawEmails ? `(${rawEmails.split(/[\n,;]/).filter(x => x.includes('@')).length} זוהו)` : ''}
+                </button>
+              </div>
+            )}
 
             {columns.length > 0 && (
-              <div className="mt-4 animate-fade-in">
+              <div className="mt-6 animate-fade-in border-t border-white/5 pt-4">
                 <label className={`block text-sm mb-1.5 ${t.label}`}>עמודת אימייל</label>
                 <div className="relative">
                   <select value={emailCol} onChange={e => setEmailCol(e.target.value)}
@@ -622,7 +679,7 @@ export default function EmailSenderPro() {
               <textarea ref={bodyRef} value={body} onChange={e => setBody(e.target.value)}
                 placeholder={isHtml
                   ? '<p>שלום <strong>{{שם}}</strong>,</p>\n<p>תוכן המייל כאן...</p>'
-                  : 'שלום {{שם}},\n\nתוכן המייל כאן...\n\nבברכה,\n{{שם שולח}}'}
+                  : 'שלום {{שם}},\n\nתוכן המייל כאן...'}
                 dir="rtl" rows={10}
                 className={`w-full rounded-xl px-4 py-3 resize-y transition-all font-mono text-sm ${t.input}`} />
             </div>
@@ -715,11 +772,6 @@ export default function EmailSenderPro() {
                     <XCircle className="w-4 h-4" /> {totalFailed.toLocaleString()}
                   </span>
                 </div>
-                {done && (
-                  <span className="text-xs text-green-500 flex items-center gap-1">
-                    <CheckCircle className="w-3 h-3" /> הושלם
-                  </span>
-                )}
               </div>
 
               {pauseUntil && (
@@ -727,16 +779,6 @@ export default function EmailSenderPro() {
                   <div className="w-4 h-4 border-2 border-amber-400/50 border-t-amber-400 rounded-full animate-spin shrink-0" />
                   <div>
                     <p className={`text-sm font-medium ${t.pauseText}`}>⏸ הושג מגבלת 500/יום – ממתין 24 שעות</p>
-                    <p className={`text-xs mt-0.5 ${t.pauseSub}`}>
-                      {(() => {
-                        void nowTick
-                        const rem = Math.max(0, pauseUntil - Date.now())
-                        const h = Math.floor(rem / 3600000)
-                        const m = Math.floor((rem % 3600000) / 60000)
-                        const s = Math.floor((rem % 60000) / 1000)
-                        return `נשאר: ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-                      })()}
-                    </p>
                   </div>
                 </div>
               )}
@@ -791,11 +833,6 @@ export default function EmailSenderPro() {
                     dir="rtl"
                     dangerouslySetInnerHTML={{ __html: previewBody || '(ריק)' }} />
                 </div>
-                {attachment && (
-                  <div className={`mt-3 pt-3 flex items-center gap-2 text-xs ${t.modalAttach}`}>
-                    <Paperclip className="w-3 h-3" /> {attachment.name}
-                  </div>
-                )}
               </div>
             </div>
           </div>
