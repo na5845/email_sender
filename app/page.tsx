@@ -342,7 +342,7 @@ export default function EmailSenderPro() {
   // ── Attachment parse ───────────────────────────────────────────────────────
 
   const handleAttachment = (file: File) => {
-    if (file.size > 15 * 1024 * 1024) { alert('קובץ גדול מדי – מקסימום 15MB'); return }
+    if (file.size > 5 * 1024 * 1024) { alert('קובץ גדול מדי – מקסימום 5MB'); return }
     const reader = new FileReader()
     reader.onload = e => {
       const arr = new Uint8Array(e.target?.result as ArrayBuffer)
@@ -701,7 +701,7 @@ export default function EmailSenderPro() {
             <SectionTitle icon={<Paperclip className="w-4 h-4" />} title="קובץ מצורף (אופציונלי)" />
             <DropZone onFile={handleAttachment} accept="*"
               label="גרור קובץ לכאן – PDF, Word, תמונה וכו'"
-              sublabel="מקסימום 15MB"
+              sublabel="מקסימום 5MB"
               file={attachment ? `${attachment.name} (${(attachment.size / 1024).toFixed(0)}KB)` : null}
               onClear={() => setAttachment(null)} />
           </Card>
