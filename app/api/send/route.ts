@@ -4,15 +4,6 @@ import { Resend } from 'resend'
 
 export const maxDuration = 60
 
-// הגדר גודל מקסימום של בקשה
-export const config = {
-  api: {
-    bodyParser: {
-      sizeLimit: '50mb',
-    },
-  },
-}
-
 interface Contact {
   [key: string]: string
 }
