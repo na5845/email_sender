@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'בקשה לא תקינה' }, { status: 400 })
   }
 
-  const { credentials, contacts, emailColumn, subject, body, isHtml, attachment, isBcc } = data
+  const { credentials, contacts, emailColumn, subject, body, isHtml, attachment, isBcc, senderName } = data
 
   if (!contacts?.length || !emailColumn) {
     return NextResponse.json({ error: 'רשימת נמענים חסרה' }, { status: 400 })
@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
       const innerHtml = isHtml ? body : escapeBody(body)
       try {
         const { error } = await resend.emails.send({
-          from: credentials.resendFrom,
+          from: buildFrom(senderName, credentials.resendFrom),
           to: credentials.resendFrom,
           bcc,
           subject,
@@ -139,7 +139,7 @@ export async function POST(request: NextRequest) {
 
       try {
         const { error } = await resend.emails.send({
-          from: credentials.resendFrom,
+          from: buildFrom(senderName, credentials.resendFrom),
           to,
           subject: personalSubject,
           html: buildHtml(innerHtml),
@@ -188,7 +188,7 @@ export async function POST(request: NextRequest) {
     const innerHtml = isHtml ? body : escapeBody(body)
     try {
       await transporter.sendMail({
-        from: credentials.email,
+        from: buildFrom(senderName, credentials.email),
         to: credentials.email,
         bcc,
         subject,
@@ -221,7 +221,7 @@ export async function POST(request: NextRequest) {
 
     try {
       await transporter.sendMail({
-        from: credentials.email,
+        from: buildFrom(senderName, credentials.email),
         to,
         subject: personalSubject,
         html: buildHtml(innerHtml),
