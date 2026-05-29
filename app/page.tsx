@@ -450,7 +450,7 @@ export default function EmailSenderPro() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               credentials: a.creds, contacts: batch, emailColumn: emailCol,
-              subject, body, isHtml, attachment, isBcc,
+              subject, body, isHtml, attachment, isBcc, senderName,
             }),
           })
           if (!res.ok) {
@@ -487,7 +487,7 @@ export default function EmailSenderPro() {
 
   const reset = () => {
     setContacts([]); setColumns([]); setEmailCol(''); setFileName(''); setRawEmails(''); setInputMethod('file')
-    setSubject(''); setBody(''); setAttachment(null)
+    setSenderName(''); setSubject(''); setBody(''); setAttachment(null)
     setTotalSent(0); setTotalFailed(0); setTotalProcessed(0)
     setLogs([]); setDone(false)
   }
