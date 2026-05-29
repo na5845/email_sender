@@ -410,9 +410,10 @@ export default function EmailSenderPro() {
 
   // ── Preview ────────────────────────────────────────────────────────────────
 
+  const htmlMode = editorMode === 'visual' || isHtml
   const previewContact = contacts[0] ?? {}
   const previewSubject = personalize(subject, previewContact)
-  const previewBody = isHtml
+  const previewBody = htmlMode
     ? personalize(body, previewContact)
     : personalize(body, previewContact).replace(/\n/g, '<br/>')
 
@@ -482,7 +483,7 @@ export default function EmailSenderPro() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               credentials: a.creds, contacts: batch, emailColumn: emailCol,
-              subject, body, isHtml, attachment, isBcc, senderName,
+              subject, body, isHtml: htmlMode, attachment, isBcc, senderName,
             }),
           })
           if (!res.ok) {
