@@ -6,6 +6,8 @@ import {
   Mail, Lock, Upload, Users, FileText, Send, Eye, RotateCcw,
   CheckCircle, XCircle, ChevronDown, Paperclip,
   Zap, Copy, X, Info, Sun, Moon,
+  Bold, Italic, Underline, AlignRight, AlignCenter, AlignLeft,
+  List, ListOrdered, Link2, Eraser, Code,
 } from 'lucide-react'
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -280,6 +282,8 @@ export default function EmailSenderPro() {
   const [subject, setSubject] = useState('')
   const [body, setBody] = useState('')
   const [isHtml, setIsHtml] = useState(false)
+  const [editorMode, setEditorMode] = useState<'visual' | 'code'>('visual')
+  const visualEditorRef = useRef<HTMLDivElement>(null)
 
   // Attachment
   const [attachment, setAttachment] = useState<Attachment | null>(null)
@@ -305,6 +309,28 @@ export default function EmailSenderPro() {
   useEffect(() => {
     logsEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [logs])
+
+  // Keep the visual editor in sync when body changes externally (template/variable/mode switch)
+  useEffect(() => {
+    if (editorMode === 'visual' && visualEditorRef.current && visualEditorRef.current.innerHTML !== body) {
+      visualEditorRef.current.innerHTML = body
+    }
+  }, [editorMode, body])
+
+  // ── Rich-text editor command ────────────────────────────────────────────────
+
+  const exec = (command: string, value?: string) => {
+    if (command === 'createLink') {
+      const url = prompt('הכנס קישור (URL):', 'https://')
+      if (!url) return
+      value = url
+    }
+    document.execCommand(command, false, value)
+    if (visualEditorRef.current) {
+      visualEditorRef.current.focus()
+      setBody(visualEditorRef.current.innerHTML)
+    }
+  }
 
   // ── Excel parse ────────────────────────────────────────────────────────────
 
@@ -367,12 +393,18 @@ export default function EmailSenderPro() {
       const next = subject.slice(0, s) + token + subject.slice(e)
       setSubject(next)
       setTimeout(() => el.setSelectionRange(s + token.length, s + token.length), 0)
-    } else if (target === 'body' && bodyRef.current) {
-      const el = bodyRef.current
-      const s = el.selectionStart ?? body.length, e = el.selectionEnd ?? body.length
-      const next = body.slice(0, s) + token + body.slice(e)
-      setBody(next)
-      setTimeout(() => el.setSelectionRange(s + token.length, s + token.length), 0)
+    } else if (target === 'body') {
+      if (editorMode === 'visual' && visualEditorRef.current) {
+        visualEditorRef.current.focus()
+        document.execCommand('insertText', false, token)
+        setBody(visualEditorRef.current.innerHTML)
+      } else if (bodyRef.current) {
+        const el = bodyRef.current
+        const s = el.selectionStart ?? body.length, e = el.selectionEnd ?? body.length
+        const next = body.slice(0, s) + token + body.slice(e)
+        setBody(next)
+        setTimeout(() => el.setSelectionRange(s + token.length, s + token.length), 0)
+      }
     }
   }
 
@@ -740,19 +772,80 @@ export default function EmailSenderPro() {
             <div className="mb-4">
               <div className="flex items-center justify-between mb-1.5">
                 <label className={`text-sm ${t.label}`}>גוף המייל</label>
+                <div className="flex items-center gap-1 rounded-lg p-0.5 border border-white/10">
+                  <button onClick={() => setEditorMode('visual')}
+                    className={`text-xs px-3 py-1 rounded-md transition-all ${editorMode === 'visual' ? t.htmlActive : t.muted}`}>
+                    ויזואלי
+                  </button>
+                  <button onClick={() => setEditorMode('code')}
+                    className={`text-xs px-3 py-1 rounded-md transition-all flex items-center gap-1 ${editorMode === 'code' ? t.htmlActive : t.muted}`}>
+                    <Code className="w-3 h-3" /> קוד
+                  </button>
+                </div>
+              </div>
+
+              {editorMode === 'visual' ? (
+                <>
+                  {/* Toolbar */}
+                  <div className={`flex flex-wrap items-center gap-1 mb-2 p-1.5 rounded-xl ${t.varSection}`}>
+                    <select onChange={e => exec('fontName', e.target.value)} defaultValue=""
+                      className={`text-xs rounded px-1 py-1 ${t.select}`} title="גופן">
+                      <option value="" disabled>גופן</option>
+                      <option value="Arial">Arial</option>
+                      <option value="Tahoma">Tahoma</option>
+                      <option value="Verdana">Verdana</option>
+                      <option value="Times New Roman">Times New Roman</option>
+                      <option value="Georgia">Georgia</option>
+                    </select>
+                    <select onChange={e => exec('fontSize', e.target.value)} defaultValue=""
+                      className={`text-xs rounded px-1 py-1 ${t.select}`} title="גודל">
+                      <option value="" disabled>גודל</option>
+                      <option value="2">קטן</option>
+                      <option value="3">רגיל</option>
+                      <option value="5">גדול</option>
+                      <option value="6">גדול מאוד</option>
+                    </select>
+                    <div className="w-px h-4 bg-white/20 mx-1" />
+                    <button onMouseDown={e => { e.preventDefault(); exec('bold') }} className={`p-1.5 rounded hover:bg-white/10 ${t.label}`} title="מודגש"><Bold className="w-4 h-4" /></button>
+                    <button onMouseDown={e => { e.preventDefault(); exec('italic') }} className={`p-1.5 rounded hover:bg-white/10 ${t.label}`} title="נטוי"><Italic className="w-4 h-4" /></button>
+                    <button onMouseDown={e => { e.preventDefault(); exec('underline') }} className={`p-1.5 rounded hover:bg-white/10 ${t.label}`} title="קו תחתון"><Underline className="w-4 h-4" /></button>
+                    <div className="w-px h-4 bg-white/20 mx-1" />
+                    <button onMouseDown={e => { e.preventDefault(); exec('justifyRight') }} className={`p-1.5 rounded hover:bg-white/10 ${t.label}`} title="ימין"><AlignRight className="w-4 h-4" /></button>
+                    <button onMouseDown={e => { e.preventDefault(); exec('justifyCenter') }} className={`p-1.5 rounded hover:bg-white/10 ${t.label}`} title="מרכז"><AlignCenter className="w-4 h-4" /></button>
+                    <button onMouseDown={e => { e.preventDefault(); exec('justifyLeft') }} className={`p-1.5 rounded hover:bg-white/10 ${t.label}`} title="שמאל"><AlignLeft className="w-4 h-4" /></button>
+                    <div className="w-px h-4 bg-white/20 mx-1" />
+                    <button onMouseDown={e => { e.preventDefault(); exec('insertUnorderedList') }} className={`p-1.5 rounded hover:bg-white/10 ${t.label}`} title="תבליטים"><List className="w-4 h-4" /></button>
+                    <button onMouseDown={e => { e.preventDefault(); exec('insertOrderedList') }} className={`p-1.5 rounded hover:bg-white/10 ${t.label}`} title="ממוספר"><ListOrdered className="w-4 h-4" /></button>
+                    <button onMouseDown={e => { e.preventDefault(); exec('createLink') }} className={`p-1.5 rounded hover:bg-white/10 ${t.label}`} title="קישור"><Link2 className="w-4 h-4" /></button>
+                    <button onMouseDown={e => { e.preventDefault(); exec('removeFormat') }} className={`p-1.5 rounded hover:bg-white/10 ${t.label}`} title="נקה עיצוב"><Eraser className="w-4 h-4" /></button>
+                    <label className="flex items-center gap-1 mr-auto px-1 cursor-pointer" title="צבע טקסט">
+                      <span className={`text-xs ${t.muted}`}>צבע</span>
+                      <input type="color" onChange={e => exec('foreColor', e.target.value)}
+                        className="w-6 h-6 p-0 border-0 rounded cursor-pointer bg-transparent" />
+                    </label>
+                  </div>
+                  <div ref={visualEditorRef} contentEditable suppressContentEditableWarning
+                    onInput={e => setBody(e.currentTarget.innerHTML)}
+                    dir="rtl"
+                    className={`w-full rounded-xl px-4 py-3 min-h-[240px] overflow-y-auto transition-all ${t.input}`} />
+                </>
+              ) : (
+                <textarea ref={bodyRef} value={body} onChange={e => setBody(e.target.value)}
+                  placeholder={isHtml
+                    ? '<p>שלום <strong>{{שם}}</strong>,</p>\n<p>תוכן המייל כאן...</p>'
+                    : 'שלום {{שם}},\n\nתוכן המייל כאן...'}
+                  dir="rtl" rows={10}
+                  className={`w-full rounded-xl px-4 py-3 resize-y transition-all font-mono text-sm ${t.input}`} />
+              )}
+
+              {editorMode === 'code' && (
                 <button onClick={() => setIsHtml(p => !p)}
-                  className={`text-xs px-3 py-1 rounded-full border transition-all ${
+                  className={`mt-2 text-xs px-3 py-1 rounded-full border transition-all ${
                     isHtml ? t.htmlActive : t.provInactive
                   }`}>
-                  {isHtml ? '‹/› HTML מופעל' : '‹/› HTML'}
+                  {isHtml ? '‹/› HTML מופעל' : '‹/› טקסט פשוט'}
                 </button>
-              </div>
-              <textarea ref={bodyRef} value={body} onChange={e => setBody(e.target.value)}
-                placeholder={isHtml
-                  ? '<p>שלום <strong>{{שם}}</strong>,</p>\n<p>תוכן המייל כאן...</p>'
-                  : 'שלום {{שם}},\n\nתוכן המייל כאן...'}
-                dir="rtl" rows={10}
-                className={`w-full rounded-xl px-4 py-3 resize-y transition-all font-mono text-sm ${t.input}`} />
+              )}
             </div>
 
             {columns.length > 0 && (
