@@ -16,8 +16,8 @@ interface Attachment {
 
 interface SendRequest {
   credentials: {
-    email: string
-    password: string
+    email?: string
+    password?: string
     provider: 'gmail' | 'resend'
     resendApiKey?: string
     resendFrom?: string
@@ -28,10 +28,15 @@ interface SendRequest {
   body: string
   isHtml: boolean
   attachment?: Attachment | null
+  isBcc?: boolean
 }
 
 function personalize(template: string, contact: Contact): string {
   return template.replace(/\{\{([^}]+)\}\}/g, (_, key) => contact[key] ?? `{{${key}}}`)
+}
+
+function escapeBody(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br/>')
 }
 
 function buildHtml(innerHtml: string): string {
@@ -53,6 +58,10 @@ function buildGmailTransport(creds: SendRequest['credentials']) {
   return { service: 'gmail', auth: { user: creds.email, pass: creds.password } }
 }
 
+function collectEmails(contacts: Contact[], emailColumn: string): string[] {
+  return contacts.map(c => c[emailColumn]?.trim()).filter((e): e is string => !!e)
+}
+
 export async function POST(request: NextRequest) {
   let data: SendRequest
   try {
@@ -61,7 +70,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'בקשה לא תקינה' }, { status: 400 })
   }
 
-  const { credentials, contacts, emailColumn, subject, body, isHtml, attachment } = data
+  const { credentials, contacts, emailColumn, subject, body, isHtml, attachment, isBcc } = data
 
   if (!contacts?.length || !emailColumn) {
     return NextResponse.json({ error: 'רשימת נמענים חסרה' }, { status: 400 })
@@ -77,6 +86,36 @@ export async function POST(request: NextRequest) {
     }
 
     const resend = new Resend(credentials.resendApiKey)
+    const attachments = attachment
+      ? [{ filename: attachment.name, content: attachment.data }]
+      : undefined
+
+    // BCC mode: one message to the whole batch (no personalization)
+    if (isBcc) {
+      const bcc = collectEmails(contacts, emailColumn)
+      if (!bcc.length) {
+        return NextResponse.json({ sent: 0, failed: 0, errors: [] })
+      }
+      const innerHtml = isHtml ? body : escapeBody(body)
+      try {
+        const { error } = await resend.emails.send({
+          from: credentials.resendFrom,
+          to: credentials.resendFrom,
+          bcc,
+          subject,
+          html: buildHtml(innerHtml),
+          attachments,
+        })
+        if (error) {
+          return NextResponse.json({ sent: 0, failed: bcc.length, errors: [{ email: `(${bcc.length} ב-BCC)`, error: error.message }] })
+        }
+        return NextResponse.json({ sent: bcc.length, failed: 0, errors: [] })
+      } catch (err: unknown) {
+        return NextResponse.json({ sent: 0, failed: bcc.length, errors: [{ email: `(${bcc.length} ב-BCC)`, error: err instanceof Error ? err.message : 'שגיאה לא ידועה' }] })
+      }
+    }
+
+    // Personalized mode: one message per recipient
     let sent = 0, failed = 0
     const errors: { email: string; error: string }[] = []
 
@@ -90,13 +129,7 @@ export async function POST(request: NextRequest) {
 
       const personalSubject = personalize(subject, contact)
       const personalBody = personalize(body, contact)
-      const innerHtml = isHtml
-        ? personalBody
-        : personalBody.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br/>')
-
-      const attachments = attachment
-        ? [{ filename: attachment.name, content: attachment.data }]
-        : undefined
+      const innerHtml = isHtml ? personalBody : escapeBody(personalBody)
 
       try {
         const { error } = await resend.emails.send({
@@ -121,7 +154,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ sent, failed, errors })
   }
 
-  // ── SMTP path ──────────────────────────────────────────────────────────────
+  // ── SMTP (Gmail) path ────────────────────────────────────────────────────────
   if (!credentials.email || !credentials.password) {
     return NextResponse.json({ error: 'פרטי אימות חסרים' }, { status: 400 })
   }
@@ -140,6 +173,31 @@ export async function POST(request: NextRequest) {
     ? [{ filename: attachment.name, content: Buffer.from(attachment.data, 'base64'), contentType: attachment.type }]
     : undefined
 
+  // BCC mode: one message to the whole batch (no personalization)
+  if (isBcc) {
+    const bcc = collectEmails(contacts, emailColumn)
+    if (!bcc.length) {
+      return NextResponse.json({ sent: 0, failed: 0, errors: [] })
+    }
+    const innerHtml = isHtml ? body : escapeBody(body)
+    try {
+      await transporter.sendMail({
+        from: credentials.email,
+        to: credentials.email,
+        bcc,
+        subject,
+        html: buildHtml(innerHtml),
+        text: isHtml ? body.replace(/<[^>]*>/g, '') : body,
+        attachments: attachmentConfig,
+      })
+      return NextResponse.json({ sent: bcc.length, failed: 0, errors: [] })
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'שגיאה לא ידועה'
+      return NextResponse.json({ sent: 0, failed: bcc.length, errors: [{ email: `(${bcc.length} ב-BCC)`, error: msg }] })
+    }
+  }
+
+  // Personalized mode: one message per recipient
   let sent = 0, failed = 0
   const errors: { email: string; error: string }[] = []
 
@@ -153,9 +211,7 @@ export async function POST(request: NextRequest) {
 
     const personalSubject = personalize(subject, contact)
     const personalBody = personalize(body, contact)
-    const innerHtml = isHtml
-      ? personalBody
-      : personalBody.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br/>')
+    const innerHtml = isHtml ? personalBody : escapeBody(personalBody)
 
     try {
       await transporter.sendMail({

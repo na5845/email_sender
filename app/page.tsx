@@ -11,8 +11,10 @@ import {
 // ── Types ──────────────────────────────────────────────────────────────────
 
 interface Contact { [key: string]: string }
+interface GmailAccount { email: string; password: string; limit: number }
 interface Credentials {
-  email: string; password: string; provider: 'gmail' | 'resend'
+  provider: 'gmail' | 'resend'
+  gmailAccounts: GmailAccount[]
   resendApiKey: string; resendFrom: string
 }
 interface Attachment { name: string; data: string; type: string; size: number }
@@ -253,8 +255,17 @@ export default function EmailSenderPro() {
 
   // Credentials
   const [creds, setCreds] = useState<Credentials>({
-    email: '', password: '', provider: 'gmail', resendApiKey: '', resendFrom: ''
+    provider: 'gmail',
+    gmailAccounts: [{ email: '', password: '', limit: 500 }],
+    resendApiKey: '', resendFrom: ''
   })
+
+  const updateAccount = (idx: number, patch: Partial<GmailAccount>) =>
+    setCreds(p => ({ ...p, gmailAccounts: p.gmailAccounts.map((a, i) => i === idx ? { ...a, ...patch } : a) }))
+  const addAccount = () =>
+    setCreds(p => ({ ...p, gmailAccounts: [...p.gmailAccounts, { email: '', password: '', limit: 500 }] }))
+  const removeAccount = (idx: number) =>
+    setCreds(p => ({ ...p, gmailAccounts: p.gmailAccounts.filter((_, i) => i !== idx) }))
 
   // Contacts & Input Method
   const [inputMethod, setInputMethod] = useState<'file' | 'manual'>('file')
@@ -280,17 +291,10 @@ export default function EmailSenderPro() {
   const [totalSent, setTotalSent] = useState(0)
   const [totalFailed, setTotalFailed] = useState(0)
   const [totalProcessed, setTotalProcessed] = useState(0)
+  const [totalTarget, setTotalTarget] = useState(0)
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [done, setDone] = useState(false)
-  const [pauseUntil, setPauseUntil] = useState<number | null>(null)
-  const [nowTick, setNowTick] = useState(0)
   const stopRef = useRef(false)
-
-  useEffect(() => {
-    if (!pauseUntil) return
-    const id = setInterval(() => setNowTick(n => n + 1), 1000)
-    return () => clearInterval(id)
-  }, [pauseUntil])
 
   const [showPreview, setShowPreview] = useState(false)
   const bodyRef = useRef<HTMLTextAreaElement>(null)
@@ -385,71 +389,94 @@ export default function EmailSenderPro() {
     setLogs(prev => [...prev, { type, message, time: new Date().toLocaleTimeString('he-IL') }])
 
   const handleSend = async () => {
-    if ((!creds.email || !creds.password) && creds.provider === 'gmail') return alert('נא להזין כתובת מייל וסיסמה')
+    const validAccounts = creds.gmailAccounts.filter(a => a.email && a.password)
+    if (creds.provider === 'gmail' && !validAccounts.length) return alert('נא להזין לפחות חשבון Gmail אחד עם סיסמה')
     if (creds.provider === 'resend' && !creds.resendApiKey) return alert('נא להזין API Key')
     if (!emailCol || !contacts.length) return alert('נא להעלות קובץ או להזין כתובות ידנית')
     if (!subject.trim()) return alert('נא להזין נושא למייל')
     if (!body.trim()) return alert('נא להזין גוף המייל')
 
-    setSending(true); setDone(false); setTotalSent(0); setTotalFailed(0)
-    setTotalProcessed(0); setLogs([]); setPauseUntil(null); stopRef.current = false
-
     const isResend = creds.provider === 'resend'
-    const DAILY_LIMIT = 500, PAUSE_MS = 24 * 60 * 60 * 1000
-    let sent = 0, failed = 0, dailySent = 0
+    const hasVariables = subject.includes('{{') || body.includes('{{')
+    const isBcc = !hasVariables
+    const BATCH_SIZE = hasVariables ? (attachment ? 3 : 10) : 40
 
-    addLog('info', isResend
-      ? `מתחיל שליחה ל-${contacts.length.toLocaleString()} נמענים דרך Resend...`
-      : `מתחיל שליחה ל-${contacts.length.toLocaleString()} נמענים (${delaySec}ש׳ בין כל מייל)...`
-    )
+    // Split recipients across accounts by per-account daily limit
+    type Assignment = { creds: object; label: string; recipients: Contact[] }
+    const assignments: Assignment[] = []
 
-    for (let i = 0; i < contacts.length; i++) {
-      if (stopRef.current) { addLog('info', `⛔ עצר ידני לאחר ${i} מיילים`); break }
-
-      if (!isResend && dailySent > 0 && dailySent % DAILY_LIMIT === 0) {
-        const resumeAt = Date.now() + PAUSE_MS
-        setPauseUntil(resumeAt)
-        addLog('info', `⏸ הגעת ל-${dailySent} מיילים – ממתין 24 שעות לפני המשך...`)
-        while (Date.now() < resumeAt && !stopRef.current) {
-          await new Promise(r => setTimeout(r, 1000))
-        }
-        setPauseUntil(null)
-        if (!stopRef.current) addLog('info', `▶ ממשיך שליחה (מייל ${i + 1})...`)
-      }
-
-      if (stopRef.current) { addLog('info', `⛔ עצר ידני`); break }
-
-      const contact = contacts[i]
-      try {
-        const res = await fetch('/api/send', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            credentials: creds, contacts: [contact], emailColumn: emailCol,
-            subject, body, isHtml, attachment,
-          }),
+    if (isResend) {
+      assignments.push({
+        creds: { provider: 'resend', resendApiKey: creds.resendApiKey, resendFrom: creds.resendFrom },
+        label: creds.resendFrom || 'Resend',
+        recipients: contacts,
+      })
+    } else {
+      let remaining = [...contacts]
+      for (const acc of validAccounts) {
+        const forAccount = remaining.splice(0, acc.limit)
+        if (forAccount.length) assignments.push({
+          creds: { provider: 'gmail', email: acc.email, password: acc.password },
+          label: acc.email,
+          recipients: forAccount,
         })
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({ error: 'שגיאת שרת' }))
-          failed++; addLog('error', `✗ [${i + 1}] ${contact[emailCol]}: ${err.error}`)
-        } else {
-          const result: BatchResult = await res.json()
-          sent += result.sent; failed += result.failed; dailySent += result.sent
-          if (result.failed > 0 && result.errors[0]) {
-            addLog('error', `✗ [${i + 1}] ${result.errors[0].email}: ${result.errors[0].error}`)
-          } else {
-            addLog('success', `✓ [${i + 1}] ${contact[emailCol]}`)
-          }
-        }
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : 'שגיאת רשת'
-        failed++; addLog('error', `✗ [${i + 1}] ${contact[emailCol]}: ${msg}`)
+        if (!remaining.length) break
       }
+      if (remaining.length) {
+        addLog('info', `⚠ ${remaining.length.toLocaleString()} נמענים מעבר לסך המגבלות – לא יישלחו בריצה זו`)
+      }
+    }
 
-      setTotalSent(sent); setTotalFailed(failed); setTotalProcessed(i + 1)
+    const target = assignments.reduce((s, a) => s + a.recipients.length, 0)
+    if (!target) return alert('אין נמענים לשליחה')
 
-      if (!isResend && i < contacts.length - 1 && !stopRef.current) {
-        await new Promise(r => setTimeout(r, delaySec * 1000))
+    setSending(true); setDone(false); setTotalSent(0); setTotalFailed(0)
+    setTotalProcessed(0); setTotalTarget(target); setLogs([]); stopRef.current = false
+
+    addLog('info', `מתחיל שליחה ל-${target.toLocaleString()} נמענים ${isBcc ? '(BCC – מהיר)' : '(אישי)'} דרך ${isResend ? 'Resend' : `${assignments.length} חשבונות Gmail`}...`)
+
+    let sent = 0, failed = 0, processed = 0
+
+    outer:
+    for (const a of assignments) {
+      if (stopRef.current) break
+      for (let i = 0; i < a.recipients.length; i += BATCH_SIZE) {
+        if (stopRef.current) { addLog('info', '⛔ עצר ידני'); break outer }
+        const batch = a.recipients.slice(i, i + BATCH_SIZE)
+        try {
+          const res = await fetch('/api/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              credentials: a.creds, contacts: batch, emailColumn: emailCol,
+              subject, body, isHtml, attachment, isBcc,
+            }),
+          })
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: 'שגיאת שרת' }))
+            failed += batch.length
+            addLog('error', `✗ [${a.label}] ${batch.length} נמענים: ${err.error}`)
+          } else {
+            const result: BatchResult = await res.json()
+            sent += result.sent; failed += result.failed
+            if (result.failed > 0 && result.errors[0]) {
+              addLog('error', `✗ [${a.label}] ${result.errors[0].email}: ${result.errors[0].error}`)
+            } else {
+              addLog('success', `✓ [${a.label}] נשלחו ${result.sent}${isBcc ? ' ב-BCC' : ''}`)
+            }
+          }
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : 'שגיאת רשת'
+          failed += batch.length
+          addLog('error', `✗ [${a.label}] ${batch.length} נמענים: ${msg}`)
+        }
+
+        processed += batch.length
+        setTotalSent(sent); setTotalFailed(failed); setTotalProcessed(processed)
+
+        if (processed < target && !stopRef.current) {
+          await new Promise(r => setTimeout(r, delaySec * 1000))
+        }
       }
     }
 
@@ -464,7 +491,7 @@ export default function EmailSenderPro() {
     setLogs([]); setDone(false)
   }
 
-  const progress = contacts.length > 0 ? (totalProcessed / contacts.length) * 100 : 0
+  const progress = totalTarget > 0 ? (totalProcessed / totalTarget) * 100 : 0
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -512,13 +539,37 @@ export default function EmailSenderPro() {
             </div>
 
             {creds.provider === 'gmail' && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 animate-fade-in">
-                <Input label="כתובת Gmail" value={creds.email}
-                  onChange={v => setCreds(p => ({ ...p, email: v }))}
-                  placeholder="you@gmail.com" type="email" />
-                <Input label="סיסמת אפליקציה (App Password)" value={creds.password}
-                  onChange={v => setCreds(p => ({ ...p, password: v }))}
-                  placeholder="xxxx xxxx xxxx xxxx" type="password" />
+              <div className="space-y-3 mb-4 animate-fade-in">
+                {creds.gmailAccounts.map((acc, idx) => (
+                  <div key={idx} className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto_auto] gap-3 items-end">
+                    <Input label={idx === 0 ? 'כתובת Gmail' : `כתובת Gmail #${idx + 1}`} value={acc.email}
+                      onChange={v => updateAccount(idx, { email: v })}
+                      placeholder="you@gmail.com" type="email" />
+                    <Input label="סיסמת אפליקציה" value={acc.password}
+                      onChange={v => updateAccount(idx, { password: v })}
+                      placeholder="xxxx xxxx xxxx xxxx" type="password" />
+                    <div>
+                      <label className={`block text-sm mb-1.5 ${t.label}`}>מגבלה ליום</label>
+                      <input type="number" min={0} max={500} value={acc.limit}
+                        onChange={e => updateAccount(idx, { limit: parseInt(e.target.value) || 0 })}
+                        dir="ltr"
+                        className={`w-20 rounded-xl px-3 py-3 transition-all ${t.input}`} />
+                    </div>
+                    {creds.gmailAccounts.length > 1 && (
+                      <button type="button" onClick={() => removeAccount(idx)}
+                        className={`mb-0.5 p-3 rounded-xl transition-all ${t.stopBtn}`} title="הסר חשבון">
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <button type="button" onClick={addAccount}
+                  className={`text-xs px-3 py-2 rounded-xl border transition-all ${t.provInactive}`}>
+                  + הוסף חשבון Gmail
+                </button>
+                <p className={`text-xs ${t.faint}`}>
+                  סך מגבלת השליחה: {creds.gmailAccounts.reduce((s, a) => s + (a.limit || 0), 0).toLocaleString()} מיילים. הנמענים מתחלקים בין החשבונות אוטומטית.
+                </p>
               </div>
             )}
 
@@ -773,7 +824,7 @@ export default function EmailSenderPro() {
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-3">
                   <span className={`text-lg font-bold ${t.heading}`}>
-                    {totalProcessed.toLocaleString()} / {contacts.length.toLocaleString()}
+                    {totalProcessed.toLocaleString()} / {totalTarget.toLocaleString()}
                   </span>
                   <span className="flex items-center gap-1 text-green-500 text-sm">
                     <CheckCircle className="w-4 h-4" /> {totalSent.toLocaleString()}
@@ -783,25 +834,6 @@ export default function EmailSenderPro() {
                   </span>
                 </div>
               </div>
-
-              {pauseUntil && (
-                <div className={`mb-4 flex items-center gap-3 p-3 rounded-xl animate-fade-in ${t.pauseBar}`}>
-                  <div className="w-4 h-4 border-2 border-amber-400/50 border-t-amber-400 rounded-full animate-spin shrink-0" />
-                  <div>
-                    <p className={`text-sm font-medium ${t.pauseText}`}>⏸ הושג מגבלת 500/יום – ממתין 24 שעות</p>
-                    <p className={`text-xs mt-0.5 ${t.pauseSub}`}>
-                      {(() => {
-                        void nowTick
-                        const rem = Math.max(0, pauseUntil - Date.now())
-                        const h = Math.floor(rem / 3600000)
-                        const m = Math.floor((rem % 3600000) / 60000)
-                        const s = Math.floor((rem % 60000) / 1000)
-                        return `נשאר: ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-                      })()}
-                    </p>
-                  </div>
-                </div>
-              )}
 
               <div className={`h-2 rounded-full mb-4 overflow-hidden ${t.progressBg}`}>
                 <div className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 rounded-full transition-all duration-300"
