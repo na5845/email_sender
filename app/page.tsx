@@ -299,7 +299,15 @@ export default function EmailSenderPro() {
   const [totalTarget, setTotalTarget] = useState(0)
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [done, setDone] = useState(false)
+  const [pauseUntil, setPauseUntil] = useState<number | null>(null)
+  const [nowTick, setNowTick] = useState(0)
   const stopRef = useRef(false)
+
+  useEffect(() => {
+    if (!pauseUntil) return
+    const id = setInterval(() => setNowTick(n => n + 1), 1000)
+    return () => clearInterval(id)
+  }, [pauseUntil])
 
   const [showPreview, setShowPreview] = useState(false)
   const bodyRef = useRef<HTMLTextAreaElement>(null)
@@ -445,88 +453,98 @@ export default function EmailSenderPro() {
     const hasVariables = subject.includes('{{') || body.includes('{{')
     const isBcc = !hasVariables
     const BATCH_SIZE = hasVariables ? (attachment ? 3 : 10) : 40
+    const PAUSE_MS = 24 * 60 * 60 * 1000
 
-    // Split recipients across accounts by per-account daily limit
-    type Assignment = { creds: object; label: string; recipients: Contact[] }
-    const assignments: Assignment[] = []
-
-    if (isResend) {
-      assignments.push({
-        creds: { provider: 'resend', resendApiKey: creds.resendApiKey, resendFrom: creds.resendFrom },
-        label: creds.resendFrom || 'Resend',
-        recipients: contacts,
-      })
-    } else {
-      let remaining = [...contacts]
-      for (const acc of validAccounts) {
-        const forAccount = remaining.splice(0, acc.limit)
-        if (forAccount.length) assignments.push({
-          creds: { provider: 'gmail', email: acc.email, password: acc.password },
-          label: acc.email,
-          recipients: forAccount,
-        })
-        if (!remaining.length) break
-      }
-      if (remaining.length) {
-        addLog('info', `⚠ ${remaining.length.toLocaleString()} נמענים מעבר לסך המגבלות – לא יישלחו בריצה זו`)
-      }
-    }
-
-    const target = assignments.reduce((s, a) => s + a.recipients.length, 0)
-    if (!target) return alert('אין נמענים לשליחה')
-
+    const target = contacts.length
     setSending(true); setDone(false); setTotalSent(0); setTotalFailed(0)
-    setTotalProcessed(0); setTotalTarget(target); setLogs([]); stopRef.current = false
+    setTotalProcessed(0); setTotalTarget(target); setLogs([]); setPauseUntil(null); stopRef.current = false
 
-    addLog('info', `מתחיל שליחה ל-${target.toLocaleString()} נמענים ${isBcc ? '(BCC – מהיר)' : '(אישי)'} דרך ${isResend ? 'Resend' : `${assignments.length} חשבונות Gmail`}...`)
+    const dailyCapacity = isResend ? Infinity : validAccounts.reduce((s, a) => s + (a.limit || 0), 0)
+
+    addLog('info', `מתחיל שליחה ל-${target.toLocaleString()} נמענים ${isBcc ? '(BCC – מהיר)' : '(אישי)'} דרך ${isResend ? 'Resend' : `${validAccounts.length} חשבונות Gmail`}...`)
+    if (!isResend && dailyCapacity < target) {
+      addLog('info', `ℹ סך המכסה היומית ${dailyCapacity.toLocaleString()} – הכלי יחלק את ${target.toLocaleString()} הנמענים ליותר מיום וימתין 24 שעות בין סבב לסבב`)
+    }
 
     let sent = 0, failed = 0, processed = 0
 
-    outer:
-    for (const a of assignments) {
-      if (stopRef.current) break
-      for (let i = 0; i < a.recipients.length; i += BATCH_SIZE) {
-        if (stopRef.current) { addLog('info', '⛔ עצר ידני'); break outer }
-        const batch = a.recipients.slice(i, i + BATCH_SIZE)
-        try {
-          const res = await fetch('/api/send', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              credentials: a.creds, contacts: batch, emailColumn: emailCol,
-              subject, body, isHtml: htmlMode, attachment, isBcc, senderName,
-            }),
-          })
-          if (!res.ok) {
-            const err = await res.json().catch(() => ({ error: 'שגיאת שרת' }))
-            failed += batch.length
-            addLog('error', `✗ [${a.label}] ${batch.length} נמענים: ${err.error}`)
-          } else {
-            const result: BatchResult = await res.json()
-            sent += result.sent; failed += result.failed
-            if (result.failed > 0 && result.errors[0]) {
-              addLog('error', `✗ [${a.label}] ${result.errors[0].email}: ${result.errors[0].error}`)
-            } else {
-              addLog('success', `✓ [${a.label}] נשלחו ${result.sent}${isBcc ? ' ב-BCC' : ''}`)
-            }
-          }
-        } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : 'שגיאת רשת'
+    // Sends a single batch through one account/provider and updates counters/logs.
+    const sendBatch = async (sendCreds: object, label: string, batch: Contact[]) => {
+      try {
+        const res = await fetch('/api/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            credentials: sendCreds, contacts: batch, emailColumn: emailCol,
+            subject, body, isHtml: htmlMode, attachment, isBcc, senderName,
+          }),
+        })
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: 'שגיאת שרת' }))
           failed += batch.length
-          addLog('error', `✗ [${a.label}] ${batch.length} נמענים: ${msg}`)
+          addLog('error', `✗ [${label}] ${batch.length} נמענים: ${err.error}`)
+        } else {
+          const result: BatchResult = await res.json()
+          sent += result.sent; failed += result.failed
+          if (result.failed > 0 && result.errors[0]) {
+            addLog('error', `✗ [${label}] ${result.errors[0].email}: ${result.errors[0].error}`)
+          } else {
+            addLog('success', `✓ [${label}] נשלחו ${result.sent}${isBcc ? ' ב-BCC' : ''}`)
+          }
         }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'שגיאת רשת'
+        failed += batch.length
+        addLog('error', `✗ [${label}] ${batch.length} נמענים: ${msg}`)
+      }
+      processed += batch.length
+      setTotalSent(sent); setTotalFailed(failed); setTotalProcessed(processed)
+      if (processed < target && !stopRef.current) {
+        await new Promise(r => setTimeout(r, delaySec * 1000))
+      }
+    }
 
-        processed += batch.length
-        setTotalSent(sent); setTotalFailed(failed); setTotalProcessed(processed)
+    const sendInBatches = async (sendCreds: object, label: string, recipients: Contact[]) => {
+      for (let i = 0; i < recipients.length; i += BATCH_SIZE) {
+        if (stopRef.current) return
+        await sendBatch(sendCreds, label, recipients.slice(i, i + BATCH_SIZE))
+      }
+    }
 
-        if (processed < target && !stopRef.current) {
-          await new Promise(r => setTimeout(r, delaySec * 1000))
+    if (isResend) {
+      const resendCreds = { provider: 'resend', resendApiKey: creds.resendApiKey, resendFrom: creds.resendFrom }
+      await sendInBatches(resendCreds, creds.resendFrom || 'Resend', contacts)
+    } else {
+      let remaining = [...contacts]
+      let round = 0
+      while (remaining.length && !stopRef.current) {
+        round++
+        if (round > 1) addLog('info', `▶ סבב ${round} – ממשיך שליחה...`)
+        // One daily round: fill every account up to its limit.
+        const todays = remaining.splice(0, dailyCapacity)
+        let pool = [...todays]
+        for (const acc of validAccounts) {
+          if (stopRef.current || !pool.length) break
+          const forAccount = pool.splice(0, acc.limit)
+          const accCreds = { provider: 'gmail', email: acc.email, password: acc.password }
+          await sendInBatches(accCreds, acc.email, forAccount)
+        }
+        // More to send tomorrow → wait 24h.
+        if (remaining.length && !stopRef.current) {
+          const resumeAt = Date.now() + PAUSE_MS
+          setPauseUntil(resumeAt)
+          addLog('info', `⏸ הושגה המכסה היומית – נותרו ${remaining.length.toLocaleString()} נמענים, ממתין 24 שעות...`)
+          while (Date.now() < resumeAt && !stopRef.current) {
+            await new Promise(r => setTimeout(r, 1000))
+          }
+          setPauseUntil(null)
         }
       }
     }
 
+    if (stopRef.current) addLog('info', `⛔ עצר ידני`)
     addLog('info', `✅ סיום! נשלחו ${sent.toLocaleString()} • נכשלו ${failed.toLocaleString()}`)
-    setSending(false); setDone(true)
+    setSending(false); setDone(true); setPauseUntil(null)
   }
 
   const reset = () => {
@@ -534,7 +552,7 @@ export default function EmailSenderPro() {
     setSenderName(''); setSubject(''); setBody(''); setAttachment(null)
     setEditorMode('visual'); setIsHtml(false)
     setTotalSent(0); setTotalFailed(0); setTotalProcessed(0)
-    setLogs([]); setDone(false)
+    setLogs([]); setDone(false); setPauseUntil(null)
   }
 
   const progress = totalTarget > 0 ? (totalProcessed / totalTarget) * 100 : 0
@@ -950,6 +968,25 @@ export default function EmailSenderPro() {
                   </span>
                 </div>
               </div>
+
+              {pauseUntil && (
+                <div className={`mb-4 flex items-center gap-3 p-3 rounded-xl animate-fade-in ${t.pauseBar}`}>
+                  <div className="w-4 h-4 border-2 border-amber-400/50 border-t-amber-400 rounded-full animate-spin shrink-0" />
+                  <div>
+                    <p className={`text-sm font-medium ${t.pauseText}`}>⏸ הושגה המכסה היומית – ממתין 24 שעות להמשך</p>
+                    <p className={`text-xs mt-0.5 ${t.pauseSub}`}>
+                      {(() => {
+                        void nowTick
+                        const rem = Math.max(0, pauseUntil - Date.now())
+                        const h = Math.floor(rem / 3600000)
+                        const m = Math.floor((rem % 3600000) / 60000)
+                        const s = Math.floor((rem % 60000) / 1000)
+                        return `נשאר: ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+                      })()}
+                    </p>
+                  </div>
+                </div>
+              )}
 
               <div className={`h-2 rounded-full mb-4 overflow-hidden ${t.progressBg}`}>
                 <div className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 rounded-full transition-all duration-300"
