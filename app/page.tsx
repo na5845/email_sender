@@ -276,6 +276,7 @@ export default function EmailSenderPro() {
   const [fileName, setFileName] = useState<string>('')
 
   // Compose
+  const [senderName, setSenderName] = useState('')
   const [subject, setSubject] = useState('')
   const [body, setBody] = useState('')
   const [isHtml, setIsHtml] = useState(false)
