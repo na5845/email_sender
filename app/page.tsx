@@ -417,6 +417,17 @@ export default function EmailSenderPro() {
     ? personalize(body, previewContact)
     : personalize(body, previewContact).replace(/\n/g, '<br/>')
 
+  // ── Estimated time (mirrors handleSend batching) ────────────────────────────
+
+  const estimatedMinutes = (() => {
+    const hasVars = subject.includes('{{') || body.includes('{{')
+    const batchSize = hasVars ? (attachment ? 3 : 10) : 40
+    const sumLimits = creds.gmailAccounts.reduce((s, a) => s + (a.limit || 0), 0)
+    const sendCount = creds.provider === 'gmail' ? Math.min(contacts.length, sumLimits) : contacts.length
+    const batches = Math.ceil(sendCount / batchSize)
+    return Math.ceil(batches * delaySec / 60)
+  })()
+
   // ── Send ───────────────────────────────────────────────────────────────────
 
   const addLog = (type: LogEntry['type'], message: string) =>
@@ -887,7 +898,7 @@ export default function EmailSenderPro() {
                 ))}
               </div>
               <span className={`text-xs mr-auto ${t.faint}`}>
-                {contacts.length > 0 && `זמן משוער: ~${Math.ceil(contacts.length * delaySec / 60)} דקות`}
+                {contacts.length > 0 && `זמן משוער: ~${estimatedMinutes} דקות`}
               </span>
             </div>
           )}
