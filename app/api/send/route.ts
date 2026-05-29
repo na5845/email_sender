@@ -29,6 +29,12 @@ interface SendRequest {
   isHtml: boolean
   attachment?: Attachment | null
   isBcc?: boolean
+  senderName?: string
+}
+
+function buildFrom(name: string | undefined, address: string): string {
+  const clean = name?.trim().replace(/"/g, '')
+  return clean ? `"${clean}" <${address}>` : address
 }
 
 function personalize(template: string, contact: Contact): string {
