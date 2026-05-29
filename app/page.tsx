@@ -521,6 +521,7 @@ export default function EmailSenderPro() {
   const reset = () => {
     setContacts([]); setColumns([]); setEmailCol(''); setFileName(''); setRawEmails(''); setInputMethod('file')
     setSenderName(''); setSubject(''); setBody(''); setAttachment(null)
+    setEditorMode('visual'); setIsHtml(false)
     setTotalSent(0); setTotalFailed(0); setTotalProcessed(0)
     setLogs([]); setDone(false)
   }
