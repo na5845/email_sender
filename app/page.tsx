@@ -720,6 +720,15 @@ export default function EmailSenderPro() {
             <SectionTitle icon={<FileText className="w-4 h-4" />} title="כתיבת המייל" />
 
             <div className="mb-4">
+              <label className={`block text-sm mb-1.5 ${t.label}`}>שם השולח <span className={`text-xs ${t.faint}`}>(אופציונלי)</span></label>
+              <input type="text" value={senderName}
+                onChange={e => setSenderName(e.target.value)}
+                placeholder="לדוגמה: הנהלת הקהילה"
+                dir="rtl"
+                className={`w-full rounded-xl px-4 py-3 transition-all ${t.input}`} />
+            </div>
+
+            <div className="mb-4">
               <label className={`block text-sm mb-1.5 ${t.label}`}>נושא</label>
               <input ref={subjectRef} type="text" value={subject}
                 onChange={e => setSubject(e.target.value)}
